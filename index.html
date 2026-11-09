@@ -779,6 +779,14 @@ td.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:now
 #climbs tr{cursor:pointer}
 #climbs tr:hover td{background:var(--bg)}
 #climbs td small{display:block;color:var(--muted);font-size:12.5px}
+
+.gpsbtn{position:absolute;z-index:500;top:calc(10px + 0px);right:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:7px 10px;font:600 14px var(--f-disp);text-transform:uppercase;letter-spacing:.03em;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.gpsbtn[aria-pressed="true"]{background:var(--fuel);color:#fff;border-color:var(--fuel)}
+.gpsbtn .gd{width:10px;height:10px;border-radius:50%;background:currentColor}
+#gpsinfo{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--fuel);padding:10px 12px;font-size:14px;display:grid;gap:3px}
+#gpsinfo b{font-family:var(--f-disp);font-size:20px}
+#gpsinfo .m{color:var(--muted);font-size:13px}
+.mapwrap{position:relative}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 
@@ -806,7 +814,7 @@ td.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:now
   </section>
 
   <section class="main">
-    <div id="map" role="region" aria-label="Mapa de la ruta y puntos"></div>
+    <div class="mapwrap" style="display:grid;gap:8px"><div style="position:relative"><div id="map" role="region" aria-label="Mapa de la ruta y puntos"></div><button class="gpsbtn" id="gpsbtn" aria-pressed="false" type="button"><span class="gd"></span>Mi ubicación</button></div><div id="gpsinfo" hidden></div></div>
     <div class="side">
       <div class="controls">
         <div class="chips" id="chips"></div>
@@ -996,6 +1004,32 @@ drawClimbs();
   const eAt=k=>{const i=kmToIdx(k);return D.prof[Math.min(i,D.prof.length-1)][1];};let s='';
   D.climbs.forEach(cl=>{const pts=D.prof.filter(p=>p[0]>=cl.a&&p[0]<=cl.b).map(p=>x(p[0]).toFixed(1)+','+y(p[1]).toFixed(1)).join(' ');s+=`<polyline points="${pts}" fill="none" stroke="var(--climb)" stroke-width="3"/>`;const yy=y(eAt(cl.b))-12;s+=`<circle cx="${x(cl.b)}" cy="${yy}" r="8" fill="var(--climb)"/><text x="${x(cl.b)}" y="${yy+4}" text-anchor="middle" style="fill:var(--panel);font-weight:600">${cl.i}</text>`;});
   svg.insertAdjacentHTML('beforeend',s);})();
+
+// ---- GPS
+(function(){
+  const btn=document.getElementById('gpsbtn'),info=document.getElementById('gpsinfo');
+  if(!('geolocation' in navigator)){btn.hidden=true;return;}
+  let wid=null,me=null,acc=null,first=true;
+  const kx=111320*Math.cos(-39*Math.PI/180),ky=110540;
+  function locate(la,lo){let best=1e18,bi=0;for(let i=0;i<D.route.length;i++){const dx=(D.route[i][1]-lo)*kx,dy=(D.route[i][0]-la)*ky,d=dx*dx+dy*dy;if(d<best){best=d;bi=i;}}return {km:cum[bi]*scaleK,d:Math.sqrt(best)};}
+  function upd(p){const la=p.coords.latitude,lo=p.coords.longitude,a=p.coords.accuracy;
+    if(!me){me=L.circleMarker([la,lo],{radius:8,color:'#fff',weight:3,fillColor:css('--fuel'),fillOpacity:1}).addTo(map);acc=L.circle([la,lo],{radius:a,color:css('--fuel'),weight:1,fillOpacity:.12}).addTo(map);}
+    else{me.setLatLng([la,lo]);acc.setLatLng([la,lo]).setRadius(a);}
+    if(first){map.setView([la,lo],Math.max(map.getZoom(),13));first=false;}
+    const r=locate(la,lo);
+    if(r.d>5000){info.innerHTML=`<span>Estás a ${fmt(r.d/1000)} km de la ruta.</span><span class="m">Cuando estés sobre el track verás tu km y lo que viene.</span>`;info.hidden=false;return;}
+    const nx=ALL.filter(x=>x.km>r.km+.2&&(['comida','abasto','combustible'].includes(x.g)||(x.g==='org'&&/Tienda|Comida|Agua|Checkpoint/.test(x.t)))).sort((a,b)=>a.km-b.km)[0];
+    const cl=D.climbs.find(c=>c.b>r.km);
+    info.innerHTML=`<span><b>Km ${fmt(r.km)}</b> de ${fmt(D.total)} <span class="m">· a ${Math.round(r.d)} m del track · precisión ±${Math.round(a)} m</span></span>`+
+      (nx?`<span>Próxima comida/tienda: <b style="font-size:16px">${esc(nx.z?nx.z.replace(/ \(.*\)/,''):nx.n)}</b> en km ${fmt(nx.km)} <span class="m">(faltan ${fmt(nx.km-r.km)} km · ${esc(nx.n)})</span></span>`:'')+
+      (cl?`<span class="m">${cl.a<=r.km?'Estás en la subida':'Próxima subida'} ${cl.i}: ${esc(cl.n)} · km ${fmt(cl.a)}–${fmt(cl.b)} · +${cl.up} m${cl.a>r.km?' (faltan '+fmt(cl.a-r.km)+' km)':' (cima en '+fmt(cl.b-r.km)+' km)'}</span>`:'');
+    info.hidden=false;}
+  function err(e){info.hidden=false;info.innerHTML=e.code===1?'<span>Sin permiso de ubicación.</span><span class="m">Actívalo en Ajustes → Privacidad → Localización → Safari (o la app) y vuelve a tocar el botón.</span>':'<span>No se pudo obtener tu ubicación todavía.</span><span class="m">Prueba al aire libre; el GPS funciona sin señal de celular.</span>';stop();}
+  function stop(){if(wid!==null)navigator.geolocation.clearWatch(wid);wid=null;btn.setAttribute('aria-pressed','false');}
+  btn.onclick=()=>{if(wid!==null){stop();if(me){map.removeLayer(me);map.removeLayer(acc);me=acc=null;}info.hidden=true;return;}
+    first=true;btn.setAttribute('aria-pressed','true');info.hidden=false;info.innerHTML='<span class="m">Buscando tu ubicación…</span>';
+    wid=navigator.geolocation.watchPosition(upd,err,{enableHighAccuracy:true,maximumAge:10000,timeout:30000});};
+})();
 
 // gaps table
 (function(){
