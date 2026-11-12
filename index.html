@@ -750,6 +750,24 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .stop .det b{color:var(--ink);font-weight:500}
 .alert{grid-column:3;margin-top:4px;font-size:13px;border-left:3px solid var(--lava);padding:4px 8px;background:var(--gap);color:var(--ink)}
 .lunch{grid-column:3;font-size:13px;color:var(--food);font-weight:500}
+
+.cfg *,.stop input{box-sizing:border-box}
+.cfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;background:var(--panel);border:1px solid var(--line);padding:12px;margin-top:10px}
+.cfg label{display:grid;gap:3px;font-size:12.5px;color:var(--muted)}
+.cfg input,.cfg select,.stop input{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:6px 8px;font:14px var(--f-body);border-radius:4px;min-width:0;width:100%}
+.stop input.sleep{width:70px;display:inline-block;padding:3px 6px}
+.btn.small{font-size:12.5px;padding:5px 9px}
+.btn.ghost{background:transparent}
+.eta{grid-column:3;font-size:14px}
+.eta b{font-family:var(--f-mono);font-weight:500}
+.st{display:inline-block;font-size:11.5px;padding:0 7px;border-radius:6px;border:1px solid;white-space:nowrap}
+.st-ok{color:var(--shop);border-color:var(--shop)}
+.st-mid{color:var(--food);border-color:var(--food)}
+.st-no{color:var(--panel);background:var(--lava);border-color:var(--lava)}
+.st-q{color:var(--muted);border-color:var(--line)}
+.acts{grid-column:3;display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.sleep{margin-top:4px;color:var(--ink)!important}
+.drop.lun{background:var(--food)}
 /* places */
 .controls{display:grid;gap:10px;background:var(--panel);border:1px solid var(--line);padding:12px}
 input[type=search],select{flex:1 1 180px;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:7px 10px;font:14px var(--f-body);border-radius:4px}
@@ -818,7 +836,7 @@ td small{display:block;color:var(--muted);font-size:12.5px}
 
   <section aria-labelledby="h-plan">
     <h2 id="h-plan">Plan de paradas</h2>
-    <p class="sub">2 L de agua · 600 ml/h · ~3,3 h de autonomía. Velocidad media 17 km/h ajustada a la pendiente (≈21 km/h en plano, ≈8,5 km/h al 5 %). Horas de pedaleo, sin contar paradas. Toca una parada para verla en el mapa.</p>
+    <p class="sub">2 L · 600 ml/h · ~3,3 h de autonomía. Velocidad 17 km/h ajustada a la pendiente. Largada: domingo 22 de noviembre, 6:00 (según bikepacking.com); puedes cambiarla. Si llegas a una parada en otra hora, toca «Llegué ahora» y se recalculan todos los horarios siguientes. Lo que ajustes queda guardado en este teléfono.</p>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-A" data-p="A" style="--c:var(--pa)">Plan A <small>Icalma · Cunco · P. Turner</small></button>
       <button class="tab" role="tab" id="tab-B" data-p="B" style="--c:var(--pb)">Plan B <small>Melipeuco · Cunco · Liquiñe</small></button>
@@ -915,29 +933,98 @@ function renderChips(){['chips','chips2'].forEach(id=>{const el=document.getElem
 
 // ---- plan layer (selected plan)
 const planLayer=L.layerGroup().addTo(map);
-function nearNames(km){const ps=ALL.filter(p=>isSup(p)&&Math.abs(p.km-km)<=1.2&&p.d<=300);const named=ps.filter(p=>!/sin nombre/.test(p.n)).map(p=>p.n);return [...new Set(named)].slice(0,4).join(' · ')||(ps[0]?ps[0].t:'');}
 function drawPlanLayer(){planLayer.clearLayers();const pk=state.plan;const [c1,c2]=PC[pk];
   D.water[pk].forEach((d,i)=>{L.polyline(seg(d.a,d.b),{color:css(i%2?c2:c1),weight:5,opacity:.95}).addTo(planLayer).bindTooltip(`Plan ${pk} · Día ${d.day}: ${d.f} → ${d.dest} · ${Math.round(d.b-d.a)} km · ${fh(d.ride)}`,{sticky:true});
     if(d.day<4)L.circleMarker(atKm(d.b),{radius:9,color:css('--panel'),weight:2,fillColor:css(c1),fillOpacity:1}).addTo(planLayer).bindTooltip(`${pk}${d.day} · ${d.dest}`,{permanent:true,direction:'left',className:'stop stop'+pk,offset:[-8,0]});
     d.stops.forEach((s,j)=>{L.circleMarker(atKm(s.km),{radius:6,color:css('--panel'),weight:2,fillColor:css('--water'),fillOpacity:1}).addTo(planLayer).bindTooltip(`D${d.day}·${j+1}`,{permanent:true,direction:'right',className:'wq',offset:[6,0]}).bindPopup(`<b>Agua · Día ${d.day}, parada ${j+1}</b><br>${esc(s.z)} · km ${fmt(s.km)}<br>${esc(nearNames(s.km))}<br>${fmt(s.dkm)} km y ${fh(s.dt)} desde la anterior · ${fmt(s.L)} L`);});});}
 
-// ---- plan panel
+// ---- plan panel (horarios)
+const DOW=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const pad=n=>String(n).padStart(2,'0');
+const fdt=d=>`${DOW[d.getDay()]} ${d.getDate()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const toLocal=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmin=m=>{m=Math.round(m);const s=m<0?'−':'+';m=Math.abs(m);return s+(m>=60?Math.floor(m/60)+' h '+pad(m%60):m+' min');};
 const tips={'465.1':'Llena todo en La Picada Vista Llaima (km 381,6) y pide agua en cabañas Repuyen / Camping Sagrado (km 388–390). Aun así son ~4,1 h hasta Camping Los Abedulos (km 456): lleva 1–1,5 L extra o un filtro para esteros.','772.5':'Llena todo en el Minimarket Calafquén (km 707,6) y lleva 0,5 L extra.','315.7':'Justo en el límite: sal de Icalma con todo lleno.'};
+const DEFCFG={start:'2026-11-22T06:00',stopMin:15,lunchMin:45,pace:100,sleep:{1:6,2:6,3:6},anchors:{}};
+const cfgOf=pk=>{const c=ls.get('aa26cfg'+pk,null)||{};return Object.assign(JSON.parse(JSON.stringify(DEFCFG)),c,{sleep:Object.assign({},DEFCFG.sleep,c.sleep||{}),anchors:Object.assign({},c.anchors||{})});};
+const saveCfg=(pk,c)=>ls.set('aa26cfg'+pk,c);
+function nearPlaces(km){return ALL.filter(p=>isSup(p)&&Math.abs(p.km-km)<=1.5&&p.d<=300);}
+function nearNames(km){const ps=nearPlaces(km);const named=ps.filter(p=>!/sin nombre/.test(p.n)).map(p=>p.n);return [...new Set(named)].slice(0,4).join(' · ')||(ps[0]?ps[0].t:'');}
+// opening_hours (OSM) — parser simple
+const DK={Mo:1,Tu:2,We:3,Th:4,Fr:5,Sa:6,Su:0};
+function ohOpen(oh,d){if(!oh)return null;if(/24\/7/.test(oh))return true;const rules=oh.split(/;\s*/).flatMap(r=>r.split(/,\s*(?=[A-Z][a-z])/));let known=false,open=false;
+  const mins=d.getHours()*60+d.getMinutes(),dw=d.getDay();
+  for(const r of rules){const m=r.trim().match(/^((?:[A-Z][a-z](?:-[A-Z][a-z])?,?\s*)+)?\s*(.*)$/);if(!m)continue;let days=null;
+    if(m[1]){days=new Set();m[1].split(/[, ]+/).filter(Boolean).forEach(tk=>{const [a,b]=tk.split('-');if(!(a in DK))return;if(b&&b in DK){let i=DK[a];for(let k=0;k<7;k++){days.add(i);if(i===DK[b])break;i=(i+1)%7;}}else days.add(DK[a]);});}
+    const ts=(m[2]||'').match(/\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}/g);if(!ts)continue;known=true;
+    for(const t of ts){const [s,e]=t.split('-').map(x=>{const [h,mm]=x.trim().split(':').map(Number);return h*60+mm;});
+      const inDay=dd=>!days||days.has(dd);
+      if(e>s){if(inDay(dw)&&mins>=s&&mins<e)open=true;}else{if(inDay(dw)&&mins>=s)open=true;if(inDay((dw+6)%7)&&mins<e)open=true;}}}
+  return known?open:null;}
+function status(km,d){const ps=nearPlaces(km);if(!ps.length)return {c:'q',t:'sin locales registrados'};
+  const res=ps.map(p=>ohOpen(p.h,d));if(res.some(r=>r===true))return {c:'ok',t:'abierto (horario publicado)'};
+  const h=d.getHours()+d.getMinutes()/60;const fuel=ps.some(p=>p.g==='combustible');
+  if(res.some(r=>r===false)&&!res.some(r=>r===null))return {c:'no',t:'cerrado (horario publicado)'};
+  if(h>=9&&h<20.5)return {c:'ok',t:'probablemente abierto'};
+  if(fuel&&h>=7&&h<23)return {c:'mid',t:'bencinera: probable abierta'};
+  if((h>=8&&h<9)||(h>=20.5&&h<22))return {c:'mid',t:'puede estar cerrado'};
+  return {c:'no',t:'probablemente cerrado'};}
+function timeline(pk){const c=cfgOf(pk);const f=100/c.pace;let t=new Date(c.start);if(isNaN(t))t=new Date(DEFCFG.start);const days=[];
+  D.water[pk].forEach(d=>{const ev=d.stops.map((s,j)=>({id:`${pk}${d.day}s${j}`,km:s.km,z:s.z,s,kind:'water'}));
+    (d.lunch||[]).forEach(l=>{const w=ev.find(e=>Math.abs(e.km-l[0])<=4);if(w){w.lunch=l[1];}else ev.push({id:`${pk}${d.day}l${l[0]}`,km:l[0],z:l[1].replace(/ · sugerido/,''),kind:'lunch',lunch:l[1]});});
+    ev.sort((a,b)=>a.km-b.km);const dayStart=new Date(t);let prevKm=d.a;
+    ev.forEach(e=>{const est=new Date(t.getTime()+(tAt(e.km)-tAt(prevKm))*f*3600e3);e.est=est;e.dkm=e.km-prevKm;e.dt=(tAt(e.km)-tAt(prevKm))*f;e.L=e.dt*0.6;
+      const an=c.anchors[e.id];e.arr=an?new Date(an):est;e.anch=!!an;e.stay=(e.lunch?c.lunchMin:c.stopMin);e.dep=new Date(e.arr.getTime()+e.stay*60e3);t=e.dep;prevKm=e.km;});
+    const aid=`${pk}${d.day}end`;const est=new Date(t.getTime()+(tAt(d.b)-tAt(prevKm))*f*3600e3);const an=c.anchors[aid];const arr=an?new Date(an):est;
+    const end={id:aid,km:d.b,est,arr,anch:!!an,dkm:d.b-prevKm,dt:(tAt(d.b)-tAt(prevKm))*f};
+    const sleep=d.day<4?(+c.sleep[d.day]||0):0;const next=new Date(arr.getTime()+sleep*3600e3);
+    days.push({d,ev,end,dayStart,sleep,next,total:(arr-dayStart)/3600e3});t=next;});
+  return {c,days};}
 function renderPlan(){const pk=state.plan;document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.p===pk));
-  const P=D.water[pk];const tk=P.reduce((s,d)=>s+d.b-d.a,0),tu=P.reduce((s,d)=>s+d.up,0),tr=P.reduce((s,d)=>s+d.ride,0),ns=P.reduce((s,d)=>s+d.stops.length,0);
-  let h=`<div class="plansum" style="margin:10px 0"><span><b>${Math.round(tk)} km</b></span><span><b>+${tu.toLocaleString('es-CL')} m</b></span><span><b>${fh(tr)}</b> de pedaleo</span><span><b>${ns}</b> paradas de agua</span></div>`;
+  const {c,days}=timeline(pk);const P=D.water[pk];const tk=P.reduce((s,d)=>s+d.b-d.a,0),tu=P.reduce((s,d)=>s+d.up,0);
+  const fin=days[days.length-1].end.arr;const elapsed=(fin-new Date(c.start))/3600e3;
+  let h=`<div class="cfg"><label>Largada<input type="datetime-local" id="cfg-start" value="${esc(c.start)}"></label><label>Min. por parada<input type="number" id="cfg-stop" min="0" max="120" step="5" value="${c.stopMin}"></label><label>Min. almuerzo<input type="number" id="cfg-lunch" min="0" max="180" step="5" value="${c.lunchMin}"></label><label>Ritmo<select id="cfg-pace">${[80,85,90,95,100,105,110,115,120].map(v=>`<option value="${v}" ${v==c.pace?'selected':''}>${v===100?'100 % (17 km/h)':v+' %'}</option>`).join('')}</select></label><button class="btn small" type="button" id="cfg-reset">Borrar llegadas reales</button></div>
+  <div class="plansum" style="margin:10px 0"><span><b>${Math.round(tk)} km</b></span><span><b>+${tu.toLocaleString('es-CL')} m</b></span><span>Meta estimada <b>${fdt(fin)}</b></span><span><b>${fh(elapsed)}</b> en total</span></div>`;
   const open=ls.get('aa26open',{});
-  P.forEach(d=>{const crit=d.stops.filter(s=>s.dt>3.34).length+(d.last.dt>3.34?1:0);const id=pk+d.day;
-    h+=`<details class="day" data-id="${id}" style="--c:var(${PC[pk][0]})" ${open[id]?'open':''}><summary><span class="dn">D${d.day}</span><span class="rt">${esc(d.f)} → ${esc(d.dest)}</span><span class="chev" aria-hidden="true">▶</span><span class="nums">${Math.round(d.b-d.a)} km · +${d.up.toLocaleString('es-CL')} m · ${fh(d.ride)} · ${d.stops.length} paradas ${crit?`<span class="flag hi">${crit} tramo${crit>1?'s':''} sin agua suficiente</span>`:''}</span></summary><ol class="stops">`;
-    const lunch=(d.lunch||[]).map(l=>l[0]);let prev=d.a;
-    d.stops.forEach((s,j)=>{const ln=(d.lunch||[]).filter(l=>l[0]>prev-1&&l[0]<=s.km+3);prev=s.km;const over=s.dt>3.34;
-      h+=`<li class="stop" data-a="${s.km-1}" data-b="${s.km+1}"><span class="km">km ${fmt(s.km)}</span><span class="drop" aria-hidden="true"></span><span class="nm">${j+1}. ${esc(s.z||s.n)}</span><span class="det">${esc(nearNames(s.km))}</span><span class="det"><b>${fmt(s.dkm)} km · ${fh(s.dt)}</b> desde la anterior · ${over?`<span class="flag hi">necesitas ${fmt(s.L)} L</span>`:`${fmt(s.L)} L`} · llevas ${fh(s.day_t)} en el día</span>${ln.map(l=>`<span class="lunch">🍽 Almuerzo: ${esc(l[1])}</span>`).join('')}${tips[String(s.km)]?`<span class="alert">${esc(tips[String(s.km)])}</span>`:''}</li>`;});
-    h+=`<li class="stop" data-a="${d.b-1}" data-b="${d.b+1}"><span class="km">km ${fmt(d.b)}</span><span class="drop end" aria-hidden="true"></span><span class="nm">Llegada: ${esc(d.dest)}</span><span class="det">${fmt(d.last.dkm)} km · ${fh(d.last.dt)} desde la última parada · ${fmt(d.last.L)} L · día completo ${fh(d.ride)}</span></li></ol></details>`;});
+  days.forEach(({d,ev,end,dayStart,sleep,next,total})=>{const crit=ev.filter(e=>e.dt>3.34).length+(end.dt>3.34?1:0);const id=pk+d.day;
+    h+=`<details class="day" data-id="${id}" style="--c:var(${PC[pk][0]})" ${open[id]?'open':''}><summary><span class="dn">D${d.day}</span><span class="rt">${esc(d.f)} → ${esc(d.dest)}</span><span class="chev" aria-hidden="true">▶</span><span class="nums">${fdt(dayStart)} → ${fdt(end.arr)} · ${Math.round(d.b-d.a)} km · +${d.up.toLocaleString('es-CL')} m · ${fh(total)} ${crit?`<span class="flag hi">${crit} tramo${crit>1?'s':''} sin agua suficiente</span>`:''}</span></summary><ol class="stops">`;
+    let n=0;
+    ev.forEach(e=>{const st=status(e.km,e.arr);const over=e.dt>3.34;if(e.kind==='water')n++;
+      h+=`<li class="stop" data-a="${e.km-1}" data-b="${e.km+1}"><span class="km">km ${fmt(e.km)}</span><span class="drop ${e.kind==='lunch'?'lun':''}" aria-hidden="true"></span><span class="nm">${e.kind==='water'?n+'. ':''}${esc(e.z)}${e.lunch?' <span class="lunch">🍽 almuerzo</span>':''}</span>
+      <span class="eta"><b>${fdt(e.arr)}</b> <span class="st st-${st.c}">${st.t}</span>${e.anch?` <span class="m">(real · plan ${fdt(e.est)}, ${fmin((e.arr-e.est)/60e3)})</span>`:''}</span>
+      <span class="det">${esc(nearNames(e.km))}</span>
+      <span class="det"><b>${fmt(e.dkm)} km · ${fh(e.dt)}</b> desde la anterior · ${over?`<span class="flag hi">necesitas ${fmt(e.L)} L</span>`:`${fmt(e.L)} L`} · sales ${pad(e.dep.getHours())}:${pad(e.dep.getMinutes())} (${e.stay} min)</span>
+      ${tips[String(e.km)]?`<span class="alert">${esc(tips[String(e.km)])}</span>`:''}
+      <span class="acts">${anchorUI(e)}</span></li>`;});
+    h+=`<li class="stop" data-a="${d.b-1}" data-b="${d.b+1}"><span class="km">km ${fmt(d.b)}</span><span class="drop end" aria-hidden="true"></span><span class="nm">Llegada: ${esc(d.dest)}</span>
+      <span class="eta"><b>${fdt(end.arr)}</b> ${d.day<4?(s=>`<span class="st st-${s.c}">${s.t}</span>`)(status(d.b,end.arr)):''}${end.anch?` <span class="m">(real · plan ${fdt(end.est)}, ${fmin((end.arr-end.est)/60e3)})</span>`:''}</span>
+      <span class="det">${fmt(end.dkm)} km · ${fh(end.dt)} desde la última parada · día completo ${fh(total)}</span>
+      ${d.day<4?`<span class="det sleep">😴 Dormir <input type="number" class="sleep" data-day="${d.day}" min="0" max="16" step="0.5" value="${sleep}" aria-label="Horas de descanso noche ${d.day}"> h → salida día ${d.day+1}: <b>${fdt(next)}</b></span>`:''}
+      <span class="acts">${anchorUI(end)}</span></li></ol></details>`;});
   document.getElementById('planpanel').innerHTML=h;
   document.querySelectorAll('details.day').forEach(el=>el.addEventListener('toggle',()=>{const o=ls.get('aa26open',{});o[el.dataset.id]=el.open;ls.set('aa26open',o);}));
   drawPlanLayer();drawPlanBars();}
+function anchorUI(e){return e.anch?`<button class="btn small" type="button" data-act="clear" data-id="${e.id}">✕ Quitar hora real</button>`:`<button class="btn small" type="button" data-act="now" data-id="${e.id}">Llegué ahora</button><button class="btn small ghost" type="button" data-act="edit" data-id="${e.id}" data-v="${toLocal(e.arr)}">Otra hora…</button>`;}
+function setCfg(fn){const pk=state.plan;const c=cfgOf(pk);fn(c);saveCfg(pk,c);renderPlan();}
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{state.plan=t.dataset.p;ls.set('aa26p',state.plan);renderPlan();});
-document.getElementById('planpanel').addEventListener('click',e=>{const s=e.target.closest('.stop');if(s)flyTo(+s.dataset.a,+s.dataset.b);});
+const pp=document.getElementById('planpanel');
+pp.addEventListener('change',e=>{const el=e.target;
+  if(el.id==='cfg-start'&&el.value)setCfg(c=>c.start=el.value);
+  else if(el.id==='cfg-stop')setCfg(c=>c.stopMin=Math.max(0,+el.value||0));
+  else if(el.id==='cfg-lunch')setCfg(c=>c.lunchMin=Math.max(0,+el.value||0));
+  else if(el.id==='cfg-pace')setCfg(c=>c.pace=+el.value);
+  else if(el.classList.contains('sleep'))setCfg(c=>c.sleep[el.dataset.day]=Math.max(0,+el.value||0));
+  else if(el.classList.contains('anchor-in')&&el.value)setCfg(c=>c.anchors[el.dataset.id]=el.value);});
+pp.addEventListener('click',e=>{const b=e.target.closest('button[data-act],#cfg-reset');
+  if(b){e.stopPropagation();
+    if(b.id==='cfg-reset'){setCfg(c=>c.anchors={});return;}
+    const id=b.dataset.id;
+    if(b.dataset.act==='now')setCfg(c=>c.anchors[id]=toLocal(new Date()));
+    else if(b.dataset.act==='clear')setCfg(c=>{delete c.anchors[id];});
+    else if(b.dataset.act==='edit'){const box=b.parentElement;box.innerHTML=`<label class="m">Hora real de llegada <input type="datetime-local" class="anchor-in" data-id="${id}" value="${b.dataset.v}"></label>`;const i=box.querySelector('input');i.focus();}
+    return;}
+  if(e.target.closest('input,select,label,.acts'))return;
+  const s=e.target.closest('.stop');if(s)flyTo(+s.dataset.a,+s.dataset.b);});
 
 // ---- places by locality
 function zoneKey(p){return p.z||('Entre pueblos · km '+Math.floor(p.km/50)*50+'–'+(Math.floor(p.km/50)*50+50));}
