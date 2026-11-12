@@ -836,7 +836,7 @@ td small{display:block;color:var(--muted);font-size:12.5px}
 
   <section aria-labelledby="h-plan">
     <h2 id="h-plan">Plan de paradas</h2>
-    <p class="sub">2 L · 600 ml/h · ~3,3 h de autonomía. Velocidad 17 km/h ajustada a la pendiente. Largada: domingo 22 de noviembre, 6:00 (según bikepacking.com); puedes cambiarla. Si llegas a una parada en otra hora, toca «Llegué ahora» y se recalculan todos los horarios siguientes. Lo que ajustes queda guardado en este teléfono.</p>
+    <p class="sub">2 L · 600 ml/h · ~3,3 h de autonomía. Velocidad 17 km/h ajustada a la pendiente. Largada: domingo 22 de noviembre, 8:00; puedes cambiarla, igual que la velocidad media. Si llegas a una parada en otra hora, toca «Llegué ahora» y se recalculan todos los horarios siguientes. Lo que ajustes queda guardado en este teléfono.</p>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-A" data-p="A" style="--c:var(--pa)">Plan A <small>Icalma · Cunco · P. Turner</small></button>
       <button class="tab" role="tab" id="tab-B" data-p="B" style="--c:var(--pb)">Plan B <small>Melipeuco · Cunco · Liquiñe</small></button>
@@ -947,8 +947,8 @@ const fdt=d=>`${DOW[d.getDay()]} ${d.getDate()} · ${pad(d.getHours())}:${pad(d.
 const toLocal=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const fmin=m=>{m=Math.round(m);const s=m<0?'−':'+';m=Math.abs(m);return s+(m>=60?Math.floor(m/60)+' h '+pad(m%60):m+' min');};
 const tips={'465.1':'Llena todo en La Picada Vista Llaima (km 381,6) y pide agua en cabañas Repuyen / Camping Sagrado (km 388–390). Aun así son ~4,1 h hasta Camping Los Abedulos (km 456): lleva 1–1,5 L extra o un filtro para esteros.','772.5':'Llena todo en el Minimarket Calafquén (km 707,6) y lleva 0,5 L extra.','315.7':'Justo en el límite: sal de Icalma con todo lleno.'};
-const DEFCFG={start:'2026-11-22T06:00',stopMin:15,lunchMin:45,pace:100,sleep:{1:6,2:6,3:6},anchors:{}};
-const cfgOf=pk=>{const c=ls.get('aa26cfg'+pk,null)||{};return Object.assign(JSON.parse(JSON.stringify(DEFCFG)),c,{sleep:Object.assign({},DEFCFG.sleep,c.sleep||{}),anchors:Object.assign({},c.anchors||{})});};
+const DEFCFG={v:2,start:'2026-11-22T08:00',stopMin:15,lunchMin:45,speed:17,sleep:{1:6,2:6,3:6},anchors:{}};
+const cfgOf=pk=>{const c=ls.get('aa26cfg'+pk,null)||{};if(!c.v){if(c.start==='2026-11-22T06:00')delete c.start;if(c.pace&&!c.speed)c.speed=Math.round(17*c.pace/100*2)/2;delete c.pace;c.v=2;}return Object.assign(JSON.parse(JSON.stringify(DEFCFG)),c,{sleep:Object.assign({},DEFCFG.sleep,c.sleep||{}),anchors:Object.assign({},c.anchors||{})});};
 const saveCfg=(pk,c)=>ls.set('aa26cfg'+pk,c);
 function nearPlaces(km){return ALL.filter(p=>isSup(p)&&Math.abs(p.km-km)<=1.5&&p.d<=300);}
 function nearNames(km){const ps=nearPlaces(km);const named=ps.filter(p=>!/sin nombre/.test(p.n)).map(p=>p.n);return [...new Set(named)].slice(0,4).join(' · ')||(ps[0]?ps[0].t:'');}
@@ -971,7 +971,7 @@ function status(km,d){const ps=nearPlaces(km);if(!ps.length)return {c:'q',t:'sin
   if(fuel&&h>=7&&h<23)return {c:'mid',t:'bencinera: probable abierta'};
   if((h>=8&&h<9)||(h>=20.5&&h<22))return {c:'mid',t:'puede estar cerrado'};
   return {c:'no',t:'probablemente cerrado'};}
-function timeline(pk){const c=cfgOf(pk);const f=100/c.pace;let t=new Date(c.start);if(isNaN(t))t=new Date(DEFCFG.start);const days=[];
+function timeline(pk){const c=cfgOf(pk);const f=17/(+c.speed||17);let t=new Date(c.start);if(isNaN(t))t=new Date(DEFCFG.start);const days=[];
   D.water[pk].forEach(d=>{const ev=d.stops.map((s,j)=>({id:`${pk}${d.day}s${j}`,km:s.km,z:s.z,s,kind:'water'}));
     (d.lunch||[]).forEach(l=>{const w=ev.find(e=>Math.abs(e.km-l[0])<=6);if(w){w.lunch=l[1];}else ev.push({id:`${pk}${d.day}l${l[0]}`,km:l[0],z:l[1].replace(/ · sugerido/,''),kind:'lunch',lunch:l[1]});});
     ev.sort((a,b)=>a.km-b.km);const dayStart=new Date(t);let prevKm=d.a;
@@ -985,7 +985,7 @@ function timeline(pk){const c=cfgOf(pk);const f=100/c.pace;let t=new Date(c.star
 function renderPlan(){const pk=state.plan;document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.p===pk));
   const {c,days}=timeline(pk);const P=D.water[pk];const tk=P.reduce((s,d)=>s+d.b-d.a,0),tu=P.reduce((s,d)=>s+d.up,0);
   const fin=days[days.length-1].end.arr;const elapsed=(fin-new Date(c.start))/3600e3;
-  let h=`<div class="cfg"><label>Largada<input type="datetime-local" id="cfg-start" value="${esc(c.start)}"></label><label>Min. por parada<input type="number" id="cfg-stop" min="0" max="120" step="5" value="${c.stopMin}"></label><label>Min. almuerzo<input type="number" id="cfg-lunch" min="0" max="180" step="5" value="${c.lunchMin}"></label><label>Ritmo<select id="cfg-pace">${[80,85,90,95,100,105,110,115,120].map(v=>`<option value="${v}" ${v==c.pace?'selected':''}>${v===100?'100 % (17 km/h)':v+' %'}</option>`).join('')}</select></label><button class="btn small" type="button" id="cfg-reset">Borrar llegadas reales</button></div>
+  let h=`<div class="cfg"><label>Largada<input type="datetime-local" id="cfg-start" value="${esc(c.start)}"></label><label>Min. por parada<input type="number" id="cfg-stop" min="0" max="120" step="5" value="${c.stopMin}"></label><label>Min. almuerzo<input type="number" id="cfg-lunch" min="0" max="180" step="5" value="${c.lunchMin}"></label><label>Velocidad media<select id="cfg-speed">${Array.from({length:19},(_,i)=>12+i*0.5).map(v=>`<option value="${v}" ${v==c.speed?'selected':''}>${fmt(v)} km/h</option>`).join('')}</select></label><button class="btn small" type="button" id="cfg-reset">Borrar llegadas reales</button></div>
   <div class="plansum" style="margin:10px 0"><span><b>${Math.round(tk)} km</b></span><span><b>+${tu.toLocaleString('es-CL')} m</b></span><span>Meta estimada <b>${fdt(fin)}</b></span><span><b>${fh(elapsed)}</b> en total</span></div>`;
   const open=ls.get('aa26open',{});
   days.forEach(({d,ev,end,dayStart,sleep,next,total})=>{const crit=ev.filter(e=>e.dt>3.34).length+(end.dt>3.34?1:0);const id=pk+d.day;
@@ -1014,7 +1014,7 @@ pp.addEventListener('change',e=>{const el=e.target;
   if(el.id==='cfg-start'&&el.value)setCfg(c=>c.start=el.value);
   else if(el.id==='cfg-stop')setCfg(c=>c.stopMin=Math.max(0,+el.value||0));
   else if(el.id==='cfg-lunch')setCfg(c=>c.lunchMin=Math.max(0,+el.value||0));
-  else if(el.id==='cfg-pace')setCfg(c=>c.pace=+el.value);
+  else if(el.id==='cfg-speed')setCfg(c=>c.speed=+el.value);
   else if(el.classList.contains('sleep'))setCfg(c=>c.sleep[el.dataset.day]=Math.max(0,+el.value||0));
   else if(el.classList.contains('anchor-in')&&el.value)setCfg(c=>c.anchors[el.dataset.id]=el.value);});
 pp.addEventListener('click',e=>{const b=e.target.closest('button[data-act],#cfg-reset');
